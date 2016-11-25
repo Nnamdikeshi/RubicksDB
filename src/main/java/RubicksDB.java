@@ -7,8 +7,8 @@ import java.util.Scanner;
 public class RubicksDB {
     static final String JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";        //Configure the driver needed
     static final String DB_CONNECTION_URL = "jdbc:mysql://localhost:3306/Rubicks";     //Connection string – where's the database?
-    static final String USER = "nnamdikeshi";   //TODO replace with your username
-    static final String PASSWORD = "11271994";   //TODO replace with your password
+    static final String USER = "********";   //TODO replace with your username
+    static final String PASSWORD = "*****";   //TODO replace with your password
 
     public static void main(String[] args) {
         Scanner stringScanner = new Scanner(System.in);
