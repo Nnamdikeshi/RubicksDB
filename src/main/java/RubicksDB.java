@@ -1,91 +1,155 @@
 /**
  * Created by Nnamdi on 11/14/2016.
  */
-import java.util.*;
 import java.sql.*;
-import java.util.Scanner;
+
 public class RubicksDB {
-    static final String JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";        //Configure the driver needed
-    static final String DB_CONNECTION_URL = "jdbc:mysql://localhost:3306/Rubicks";     //Connection string – where's the database?
-    static final String USER = "********";   //TODO replace with your username
-    static final String PASSWORD = "*****";   //TODO replace with your password
-
+    public final static String RUBICK_TABLE_NAME = "cube_solver";
+    // Each solver will have a unique ID
+    public final static String PK_COLUMN = "id";
+    // A primary key is needed to allow updates to the database on modifications to ResultSet
+    public final static String SOLVER_COLUMN = "title";
+    public final static String TIME_COLUMN = "year_released";
+    // Configure driver
+    static final String JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";
+    // Establish our URL connection
+    static final String DB_CONNECTION_URL = "jdbc:mysql://localhost:3306/";
+    // Set username and pass
+    static final String USER = "*****";   //TODO replace with your username
+    static final String PASSWORD = "******";   //TODO replace with your password
+    // Name our database
+    static private final String DB_NAME = "rubicks";
+    static Statement statement = null;
+    static Connection conn = null;
+    static ResultSet rs = null;
+    // Create out data model
+    private static RubickDataModel rubickDataModel;
     public static void main(String[] args) {
-        Scanner stringScanner = new Scanner(System.in);
-        Scanner numberScanner = new Scanner(System.in);
 
-        ResultSet rs = null;
-
-        System.out.println("Rubicks Database Program");
-
-        try {
-            Class.forName(JDBC_DRIVER);
-
-        } catch (ClassNotFoundException cnfe) {
-            System.out.println("Can't instantiate driver class; check you have drives and classpath configured correctly?");
-            cnfe.printStackTrace();
-            System.exit(-1);  //No driver? Need to fix before anything else will work. So quit the program
-        }
-
-
-        /* Create a table, and insert some test data */
-
-        try {
-            Connection conn = DriverManager.getConnection(DB_CONNECTION_URL, USER, PASSWORD);
-            Statement statement = conn.createStatement();
-            {
-            /* Create a table in the database. Stores dog's names, ages, weights and whether the dog has been vaccinated or not. */
-
-                String createTableSQL = "CREATE TABLE IF NOT EXISTS rubicks ('Cube_solver' varchar(30), 'Seconds_to_solve' double)";
-                statement.executeUpdate(createTableSQL);
-                System.out.println("Created Rubicks table");
-
-            /* Add one row of test data, using a prepared statement */
-
-                String prepStatInsert = "INSERT INTO rubicks VALUES ( ? , ?)";
-                PreparedStatement psInsert = conn.prepareStatement(prepStatInsert);
-
-            /* And add some more data, this time the data comes from arrays. Loop over arrays and use data in the PreparedStatement */
-
-                String[] solveNames = {"Cubestormer II robot", "Fakhri Raihaan(using his feet)", "Ruxin Liu(age 3)", "Mats Valk(human record holder)"};
-                double[] timeTaken = {5.270, 27.93, 99.93, 6.27};
-
-                for (int i = 0; i < solveNames.length; i++) {
-                    psInsert.setString(1, solveNames[i]);
-                    psInsert.setDouble(2, timeTaken[i]);
-                    psInsert.executeUpdate();
-                }
-                //Mats Valk has broken his record.... Update his record
-
-                System.out.println();
-                System.out.println("Updating Mats Valk's record to 5.55");
-
-                String updateLassie = "UPDATE rubicks SET timeTaken=5.55 WHERE solveNames='Mats Valk(human record holder)'";
-                statement.executeUpdate(updateLassie);
-
-                System.out.println("Added data to database");
-                System.out.println("Add another time? Enter 'yes' ");
-                String more = stringScanner.next();
-
-                if (more.equalsIgnoreCase("yes")) {
-                    System.out.println("Enter a new solver: ");
-                    String moreName = stringScanner.nextLine();
-                    System.out.println("Now enter how fast they solved the cube (In seconds): ");
-                    double moreTime = numberScanner.nextDouble();
-                    psInsert.setString(1, moreName);
-                    psInsert.setDouble(2, moreTime);
-                    psInsert.executeUpdate();
-                } else {
-                    //close connection, statement, prepared statement
-                    psInsert.close();
-                    statement.close();
-                    conn.close();
-                }
-            }
-
-        } catch (SQLException sqle) {
-            sqle.printStackTrace();
+        if (!setup()) {
             System.exit(-1);
         }
+
+        if (! loadSolvers ()) {
+            System.exit(-1);
+        }
+
+        //If no errors, then start GUI
+        RubicksGUI tableGUI = new RubicksGUI (rubickDataModel);
+
     }
-}
+
+    //Create or recreate a ResultSet containing the whole database, and give it to rubickDataModel
+    public static boolean loadSolvers (){
+
+        try{
+
+            if (rs!=null) {
+                rs.close();
+            }
+
+            String getAllData = "SELECT * FROM " + RUBICK_TABLE_NAME;
+            rs = statement.executeQuery(getAllData);
+
+            if (rubickDataModel == null) {
+                //If no current rubickDataModel, then make one
+                rubickDataModel = new RubickDataModel (rs);
+            } else {
+                //Or, if one already exists, update its ResultSet
+                rubickDataModel.updateResultSet(rs);
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            System.out.println("Error loading or reloading solver times");
+            System.out.println(e);
+            e.printStackTrace();
+            return false;
+        }
+
+    }
+
+    public static boolean setup(){
+        try {
+
+            //Load driver class
+            try {
+                String Driver = "com.mysql.jdbc.Driver";
+                Class.forName(Driver);
+            } catch (ClassNotFoundException cnfe) {
+                System.out.println("No database drivers found. Quitting");
+                return false;
+            }
+
+            conn = DriverManager.getConnection(DB_CONNECTION_URL + DB_NAME, USER, PASSWORD);
+
+            statement = conn.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE);
+
+            //Does the table exist? If not, create it.
+            if (! rubickTableExists ()) {
+
+                //Create a table in the database with 2 columns: Solver, and Time
+                String createTableSQL = "CREATE TABLE " + RUBICK_TABLE_NAME + " (" + PK_COLUMN + " int NOT NULL AUTO_INCREMENT, " + SOLVER_COLUMN + " varchar(50), " + TIME_COLUMN + " int, PRIMARY KEY(" + PK_COLUMN + "))";
+                System.out.println(createTableSQL);
+                statement.executeUpdate(createTableSQL);
+
+                System.out.println("Created movie_reviews table");
+                String addDataSQL = "INSERT INTO " + RUBICK_TABLE_NAME + "(" + SOLVER_COLUMN + ", " + TIME_COLUMN + ")" + " VALUES ('Cubestormer II robot', 5.270)";
+                statement.executeUpdate(addDataSQL);
+                addDataSQL = "INSERT INTO " + RUBICK_TABLE_NAME +  "(" + SOLVER_COLUMN + ", " + TIME_COLUMN + ")" + " VALUES('Fakhri Raihaan(using his feet)', 27.93)";
+                statement.executeUpdate(addDataSQL);
+                addDataSQL = "INSERT INTO " + RUBICK_TABLE_NAME +  "(" + SOLVER_COLUMN + ", " + TIME_COLUMN + ")" + " VALUES ('Ruxin Liu(age 3)', 99.93)";
+                statement.executeUpdate(addDataSQL);
+                addDataSQL = "INSERT INTO " + RUBICK_TABLE_NAME +  "(" + SOLVER_COLUMN + ", " + TIME_COLUMN + ")" + " VALUES ('Mats Valk(human record holder)', 6.27)";
+                statement.executeUpdate(addDataSQL);
+            }
+            return true;
+
+        } catch (SQLException se) {
+            System.out.println(se);
+            se.printStackTrace();
+            return false;
+        }
+    }
+
+    private static boolean rubickTableExists () throws SQLException {
+
+        String checkTablePresentQuery = "SHOW TABLES LIKE '" + RUBICK_TABLE_NAME + "'";
+        ResultSet tablesRS = statement.executeQuery(checkTablePresentQuery);
+        return tablesRS.next ( );
+
+    }
+
+        public static void shutdown(){
+            try {
+                if (rs != null) {
+                    rs.close();
+                    System.out.println("Result set closed");
+                }
+            } catch (SQLException se) {
+                se.printStackTrace();
+            }
+
+            try {
+                if (statement != null) {
+                    statement.close();
+                    System.out.println("Statement closed");
+                }
+            } catch (SQLException se){
+                //Closing the connection could throw an exception too
+                se.printStackTrace();
+            }
+
+            try {
+                if (conn != null) {
+                    conn.close();
+                    System.out.println("Database connection closed");
+                }
+            }
+            catch (SQLException se) {
+                se.printStackTrace();
+            }
+        }
+    }
+
